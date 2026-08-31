@@ -1,0 +1,10 @@
+{
+  "name": "tor-relay-agent",
+  "version": "0.2.0",
+  "description": "Local agent that exposes Tor ControlPort bandwidth/uptime as JSON over localhost HTTP",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "MIT"
+}

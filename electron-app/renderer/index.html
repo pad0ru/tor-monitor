@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'" />
+<title>Tor relay monitor</title>
+<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="../node_modules/xterm/css/xterm.css" />
+</head>
+<body>
+  <h1>Tor relay monitor</h1>
+
+  <section id="connect-form">
+    <h2>Connect</h2>
+    <div class="grid">
+      <label>SSH host <input id="sshHost" placeholder="relay hostname or IP" /></label>
+      <label>SSH port <input id="sshPort" placeholder="22" value="22" /></label>
+      <label>SSH username <input id="sshUsername" placeholder="user" /></label>
+      <label>SSH password <input id="sshPassword" type="password" /></label>
+      <label>Private key path (optional) <input id="privateKeyPath" placeholder="C:\\Users\\you\\.ssh\\id_ed25519" /></label>
+      <label>Key passphrase (optional) <input id="passphrase" type="password" /></label>
+      <label>Agent port on relay <input id="agentPort" value="5001" /></label>
+      <label>Local tunnel port <input id="localPort" value="15001" /></label>
+      <label>Agent token (optional) <input id="agentToken" type="password" /></label>
+      <label>Relay fingerprint (for status) <input id="fingerprint" placeholder="40-char hex from Relay Search" /></label>
+    </div>
+    <button id="connectBtn">Connect</button>
+    <button id="disconnectBtn" disabled>Disconnect</button>
+    <span id="sshStatus" class="ssh-status"></span>
+    <p id="connError" class="error"></p>
+  </section>
+
+  <section id="status-panel" class="hidden">
+    <h2>Status</h2>
+    <div class="stat-grid">
+      <div class="stat"><span class="label">Uptime</span><span class="value" id="statUptime">-</span></div>
+      <div class="stat"><span class="label">Version</span><span class="value" id="statVersion">-</span></div>
+      <div class="stat"><span class="label">Read rate</span><span class="value" id="statReadRate">-</span></div>
+      <div class="stat"><span class="label">Write rate</span><span class="value" id="statWriteRate">-</span></div>
+      <div class="stat"><span class="label">Flags</span><span class="value" id="statFlags">-</span></div>
+      <div class="stat"><span class="label">Consensus weight</span><span class="value" id="statWeight">-</span></div>
+    </div>
+  </section>
+
+  <section id="chart-section" class="hidden">
+    <h2>Bandwidth (KB/s)</h2>
+    <div class="chart-wrap">
+      <canvas id="bwChart"></canvas>
+    </div>
+  </section>
+
+  <section id="terminal-section" class="hidden">
+    <h2>Terminal</h2>
+    <button id="openTerminalBtn">Open terminal</button>
+    <div id="terminalHost"></div>
+  </section>
+
+  <script src="../node_modules/chart.js/dist/chart.umd.js"></script>
+  <script src="../node_modules/xterm/lib/xterm.js"></script>
+  <script src="../node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
