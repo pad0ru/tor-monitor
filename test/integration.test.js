@@ -145,21 +145,19 @@ async function main() {
   console.log('[driver] mock SSH server on', SSH_PORT);
 
   // 1. wrong password should reject cleanly
-  try {
-    await fake.__invoke('monitor:connect', { ...baseCfg, password: 'wrong' });
-    check('connect rejects on bad password', false);
-  } catch (err) {
-    check('connect rejects on bad password', /authentication|auth/i.test(err.message), err.message);
+  // monitor:connect returns { ok: false, error } rather than throwing (so
+  // the renderer can show a clean message without Electron's IPC prefix).
+  {
+    const res = await fake.__invoke('monitor:connect', { ...baseCfg, password: 'wrong' });
+    check('connect rejects on bad password', res.ok === false && /login failed/i.test(res.error), res.error);
   }
 
   // 2. local port already in use -> reject, and no SSH connection leaked
   const blocker = net.createServer(() => {});
   await new Promise((r) => blocker.listen(LOCAL_PORT, '127.0.0.1', r));
-  try {
-    await fake.__invoke('monitor:connect', baseCfg);
-    check('connect rejects when local port busy', false);
-  } catch (err) {
-    check('connect rejects when local port busy', /EADDRINUSE/.test(err.message), err.message);
+  {
+    const res = await fake.__invoke('monitor:connect', baseCfg);
+    check('connect rejects when local port busy', res.ok === false && /already in use/i.test(res.error), res.error);
   }
   await sleep(300);
   check('no SSH connection leaked after failed setup', liveConns.size === 0, `live=${liveConns.size}`);
@@ -265,12 +263,10 @@ async function main() {
       client.on('authentication', (ctx) => ctx.accept());
     });
   await new Promise((r) => evilServer.listen(SSH_PORT, '127.0.0.1', r));
-  try {
-    await fake.__invoke('monitor:connect', { ...baseCfg, fingerprint: undefined });
-    check('changed host key refused (MITM protection)', false, 'connect unexpectedly succeeded');
-  } catch (err) {
-    check('changed host key refused (MITM protection)', /host key .* changed/i.test(err.message),
-      err.message.slice(0, 100));
+  {
+    const res = await fake.__invoke('monitor:connect', { ...baseCfg, fingerprint: undefined });
+    check('changed host key refused (MITM protection)', res.ok === false && /host key .* changed/i.test(res.error),
+      (res.error || '').slice(0, 100));
   }
   await new Promise((r) => evilServer.close(r));
   await new Promise((r) => sshServer.listen(SSH_PORT, '127.0.0.1', r));

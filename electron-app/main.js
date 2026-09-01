@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, clipboard } = require('electron');
 const path = require('path');
 const net = require('net');
 const http = require('http');
@@ -411,6 +411,15 @@ ipcMain.handle('terminal:start', async (_evt, { cols, rows }) => {
     });
   });
 });
+
+// Clipboard for the embedded terminal. The renderer is sandboxed, so the
+// preload has no access to Electron's clipboard module — reads and writes
+// are brokered here instead. Plain text only.
+ipcMain.on('clipboard:write', (_evt, text) => {
+  if (typeof text === 'string' && text.length > 0) clipboard.writeText(text);
+});
+
+ipcMain.handle('clipboard:read', () => clipboard.readText());
 
 ipcMain.on('terminal:input', (_evt, data) => {
   if (terminalStream && typeof data === 'string') terminalStream.write(data);

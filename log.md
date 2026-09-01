@@ -29,3 +29,18 @@
 - Build and test the Windows `.exe` installer from native Windows (WSL has no Wine, so the Windows target can't be cross-built here — Linux AppImage/macOS DMG are buildable from WSL/mac respectively).
 - Optional: add an app icon for the installer.
 - Optional: scrub relay-identifying details (IP/hostname/paths) from `log.md` before making the repo public.
+
+## 2026-09-01
+
+### Bandwidth chart legend
+- The chart's `Read KB/s` / `Write KB/s` datasets already had matching colors and labels but the legend was hidden. Enabled it (top-right, colored swatches) so the blue/orange lines are actually identifiable.
+
+### Terminal copy/paste
+- The embedded xterm.js terminal had no copy/paste at all — every keystroke (including Ctrl+C/Ctrl+V) is forwarded straight to the remote shell as SIGINT / literal input.
+- Added keyboard shortcuts (Ctrl+Insert to copy, Ctrl+Shift+V or Shift+Insert to paste) and right-click (copies the selection if there is one, otherwise pastes).
+- Skipped `Ctrl+Shift+C` for copy: it's Chromium's built-in "Inspect Element" devtools shortcut and is consumed at the browser-chrome level before any page JS sees the keystroke — no page-level fix is possible without also intercepting `before-input-event` in the main process and disabling/reclaiming that shortcut, which wasn't worth it here.
+- **Bug found and fixed:** copy silently did nothing (paste appeared to work, but only because Chromium's native textarea paste fired as a side effect of the handler throwing). Root cause: the renderer runs sandboxed, so the preload's `require('electron')` doesn't include the `clipboard` module — it was `undefined`, and every copy call threw. Fixed by brokering clipboard reads/writes through IPC to the main process (`clipboard:write` / `clipboard:read` in `main.js`, real `clipboard.writeText`/`readText` there) instead of touching the module from the sandboxed preload. Paste handlers now also call `preventDefault()` so Chromium's native paste doesn't fire a second, duplicate paste alongside the deliberate one.
+- Verified Electron's clipboard writes sync through WSLg to the Windows clipboard (round-tripped a test string via `powershell.exe Get-Clipboard`), so terminal copies are usable outside the WSL app too.
+
+### Environment note
+- Found `node_modules/electron` had been overwritten with **Windows** binaries (`electron.exe`) between sessions, breaking `npm start` in WSL — almost certainly from an `npm install` run from the Windows side against the same checkout. Re-ran `npm install electron` from WSL to restore the Linux binary. WSL and Windows can't share one `node_modules/electron`; keep them in separate checkouts/installs if both sides are used.

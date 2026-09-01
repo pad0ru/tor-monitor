@@ -8,13 +8,13 @@
     "dist": "electron-builder"
   },
   "dependencies": {
-    "ssh2": "^1.15.0",
     "chart.js": "^4.4.1",
+    "ssh2": "^1.15.0",
     "xterm": "^5.3.0",
     "xterm-addon-fit": "^0.8.0"
   },
   "devDependencies": {
-    "electron": "^31.0.0",
+    "electron": "^31.7.7",
     "electron-builder": "^24.13.3"
   },
   "license": "MIT",
@@ -45,5 +45,10 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
     }
+  },
+  "allowScripts": {
+    "electron@31.7.7": true,
+    "ssh2@1.17.0": true,
+    "cpu-features@0.0.10": true
   }
 }

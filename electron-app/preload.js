@@ -2,6 +2,15 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
+// The embedded xterm.js terminal has no native copy/paste — every keystroke
+// is forwarded to the remote shell. The renderer is sandboxed, so the
+// clipboard module isn't available here; reads/writes go through IPC to the
+// main process. Plain text only. Note readText is async (invoke).
+contextBridge.exposeInMainWorld('clipboard', {
+  writeText: (text) => ipcRenderer.send('clipboard:write', String(text)),
+  readText: () => ipcRenderer.invoke('clipboard:read'),
+});
+
 contextBridge.exposeInMainWorld('monitor', {
   connect: (cfg) => ipcRenderer.invoke('monitor:connect', cfg),
   disconnect: () => ipcRenderer.invoke('monitor:disconnect'),

@@ -48,7 +48,12 @@ const chart = new Chart(ctx, {
       x: { ticks: { display: false }, grid: { display: false } },
     },
     plugins: {
-      legend: { display: false },
+      legend: {
+        display: true,
+        position: 'top',
+        align: 'end',
+        labels: { color: '#eaeaea', boxWidth: 12, boxHeight: 12, usePointStyle: true },
+      },
     },
   },
 });
@@ -195,6 +200,46 @@ document.getElementById('openTerminalBtn').addEventListener('click', async () =>
     term.loadAddon(fitAddon);
     term.open(document.getElementById('terminalHost'));
     fitAddon.fit();
+
+    // Copy/paste. xterm forwards keystrokes to the shell, so Ctrl+C is
+    // SIGINT and Ctrl+V is literal. Ctrl+Shift+C is also Chromium's
+    // built-in "Inspect Element" devtools shortcut, which intercepts the
+    // keystroke before page JS ever sees it — so copy uses the other
+    // classic terminal-emulator convention, Ctrl+Insert, to avoid the
+    // collision. Ctrl+Shift+V (paste) has no such conflict.
+    const pasteFromClipboard = async () => {
+      const text = await window.clipboard.readText();
+      if (text) window.terminal.sendInput(text);
+    };
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== 'keydown') return true;
+      if (e.ctrlKey && !e.shiftKey && e.key === 'Insert') {
+        const sel = term.getSelection();
+        if (sel) window.clipboard.writeText(sel);
+        e.preventDefault();
+        return false; // handled; don't forward to the shell
+      }
+      if ((e.ctrlKey && e.shiftKey && (e.key === 'V' || e.key === 'v')) || (!e.ctrlKey && e.shiftKey && e.key === 'Insert')) {
+        // preventDefault so Chromium's own paste-into-textarea doesn't
+        // fire too (xterm forwards that as well — text would paste twice).
+        e.preventDefault();
+        pasteFromClipboard();
+        return false;
+      }
+      return true;
+    });
+    document.getElementById('terminalHost').addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const sel = term.getSelection();
+      if (sel) {
+        // Text is selected: right-click copies it (and clears the selection).
+        window.clipboard.writeText(sel);
+        term.clearSelection();
+      } else {
+        // Nothing selected: right-click pastes.
+        pasteFromClipboard();
+      }
+    });
 
     term.onData((data) => window.terminal.sendInput(data));
     window.terminal.onData((data) => term.write(data));
