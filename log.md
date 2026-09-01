@@ -20,6 +20,12 @@
 ### Tooling
 - Confirmed the app runs via `npm start` in WSL (WSLg) against the live relay. GPU/zygote errors in the console are the normal WSLg software-rendering fallback and can be ignored.
 
+### Follow-up fixes (same day, after initial testing)
+- **Terminal didn't refresh across sessions.** Switching SSH users (or reconnecting) opened a fresh shell in the backend, but the xterm display kept the old session's screen, scrollback, and any leftover terminal mode (e.g. an alternate screen left open by vim/htop). `openTerminalBtn` now calls `term.reset()` before starting each new session, and shows `[press "Open terminal" to start a new shell]` when a session closes.
+- **Friendly error mapping was incomplete.** `friendlyConnectError()` (added earlier today) was only applied to the initial `monitor:connect` call — the auto-reconnect loop and the live SSH error handler still sent raw ssh2 error text (e.g. "All configured authentication methods failed") straight to the UI. Both `scheduleReconnect()` and the live `client.on('error')` handler in `main.js` now route through `friendlyConnectError()` too. Caught by `/code-review medium`.
+- Ran `/code-review medium` on the day's diff; noted but not yet acted on: `log.md` documents the relay's LAN IP, hostname, and install paths — fine while the GitHub repo stays private, but worth scrubbing before ever making it public.
+
 ### Known follow-ups
-- Build and test the Windows `.exe` installer from native Windows.
+- Build and test the Windows `.exe` installer from native Windows (WSL has no Wine, so the Windows target can't be cross-built here — Linux AppImage/macOS DMG are buildable from WSL/mac respectively).
 - Optional: add an app icon for the installer.
+- Optional: scrub relay-identifying details (IP/hostname/paths) from `log.md` before making the repo public.

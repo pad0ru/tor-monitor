@@ -174,7 +174,7 @@ function connectTunnel(cfg) {
 
         // From here on, errors/closes mean the live session dropped.
         client.on('error', (err) => {
-          send('ssh-status', { state: 'error', error: err.message, timestamp: Date.now() });
+          send('ssh-status', { state: 'error', error: friendlyConnectError(err), timestamp: Date.now() });
         });
         client.on('close', () => handleSshDrop());
 
@@ -239,7 +239,7 @@ function scheduleReconnect() {
     } catch (err) {
       send('ssh-status', {
         state: 'reconnecting',
-        error: err.message,
+        error: friendlyConnectError(err),
         nextRetryMs: reconnectDelayMs,
         timestamp: Date.now(),
       });

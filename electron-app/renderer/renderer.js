@@ -200,6 +200,7 @@ document.getElementById('openTerminalBtn').addEventListener('click', async () =>
     window.terminal.onData((data) => term.write(data));
     window.terminal.onClosed(() => {
       terminalStarted = false;
+      term.write('[press "Open terminal" to start a new shell]\r\n');
     });
 
     window.addEventListener('resize', () => {
@@ -214,6 +215,11 @@ document.getElementById('openTerminalBtn').addEventListener('click', async () =>
     // terminal is actually rendered at (the section may have just
     // become visible).
     fitAddon.fit();
+    // Each start is a brand-new shell session (possibly as a different
+    // user after a reconnect), so wipe the previous session's screen,
+    // scrollback, and any leftover terminal modes (e.g. an alternate
+    // screen from vim/htop that was open when the old session died).
+    term.reset();
     await window.terminal.start({ cols: term.cols, rows: term.rows });
     terminalStarted = true;
     window.terminal.resize({ cols: term.cols, rows: term.rows });
