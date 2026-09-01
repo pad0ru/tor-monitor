@@ -332,10 +332,41 @@ function fetchOnionoo(fingerprint) {
   });
 }
 
+// Translate raw ssh2/net error text into something a user can act on.
+// Electron also wraps thrown IPC errors in "Error invoking remote method
+// '...'": ... boilerplate, so monitor:connect returns a plain {ok, error}
+// result instead of throwing, letting the renderer show a clean message.
+function friendlyConnectError(err) {
+  const msg = err && err.message ? err.message : String(err);
+  if (/all configured authentication methods failed/i.test(msg)) {
+    return 'Login failed: incorrect username or password (or key/passphrase).';
+  }
+  if (/ECONNREFUSED/.test(msg)) {
+    return 'Could not reach that host/port — is SSH running there and is the port correct?';
+  }
+  if (/ENOTFOUND|EAI_AGAIN/.test(msg)) {
+    return 'Host not found — check the hostname or IP address.';
+  }
+  if (/ETIMEDOUT|Timed out while waiting for handshake/i.test(msg)) {
+    return 'Connection timed out — check the host is reachable and the port is correct.';
+  }
+  if (/EADDRINUSE/.test(msg)) {
+    return `Local tunnel port is already in use — pick a different local port.`;
+  }
+  if (/man-in-the-middle/i.test(msg)) {
+    return msg; // already a clear, actionable message
+  }
+  return msg;
+}
+
 ipcMain.handle('monitor:connect', async (_evt, cfg) => {
   fullTeardown();
   userDisconnected = false;
-  await connectTunnel(cfg);
+  try {
+    await connectTunnel(cfg);
+  } catch (err) {
+    return { ok: false, error: friendlyConnectError(err) };
+  }
   currentCfg = cfg;
   reconnectDelayMs = 2000;
   startPolling(cfg);

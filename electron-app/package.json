@@ -4,7 +4,8 @@
   "description": "Cross-platform desktop app for monitoring a home Tor relay",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder"
   },
   "dependencies": {
     "ssh2": "^1.15.0",
@@ -13,7 +14,36 @@
     "xterm-addon-fit": "^0.8.0"
   },
   "devDependencies": {
-    "electron": "^31.0.0"
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "build": {
+    "appId": "com.pad0ru.tor-relay-monitor",
+    "productName": "Tor Relay Monitor",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "!renderer/**/*.map"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Utility"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
 }

@@ -76,7 +76,10 @@ function formatUptime(seconds) {
 
 window.monitor.onAgentStats((stats) => {
   if (!stats.ok) {
-    document.getElementById('statUptime').textContent = 'agent unreachable';
+    document.getElementById('statUptime').textContent = stats.error || 'agent unreachable';
+    document.getElementById('statVersion').textContent = '-';
+    document.getElementById('statReadRate').textContent = '-';
+    document.getElementById('statWriteRate').textContent = '-';
     return;
   }
   document.getElementById('statUptime').textContent = formatUptime(stats.uptimeSeconds);
@@ -144,12 +147,19 @@ connectBtn.addEventListener('click', async () => {
 
   connectBtn.disabled = true;
   try {
-    await window.monitor.connect(cfg);
+    const result = await window.monitor.connect(cfg);
+    if (!result || !result.ok) {
+      connError.textContent = (result && result.error) || 'Connection failed.';
+      connectBtn.disabled = false;
+      return;
+    }
     disconnectBtn.disabled = false;
     statusPanel.classList.remove('hidden');
     chartSection.classList.remove('hidden');
     document.getElementById('terminal-section').classList.remove('hidden');
   } catch (err) {
+    // Shouldn't normally happen (monitor:connect no longer throws), but
+    // guard in case of an unexpected IPC-level failure.
     connError.textContent = 'Connection failed: ' + (err && err.message ? err.message : err);
     connectBtn.disabled = false;
   }
