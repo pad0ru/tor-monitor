@@ -44,3 +44,7 @@
 
 ### Environment note
 - Found `node_modules/electron` had been overwritten with **Windows** binaries (`electron.exe`) between sessions, breaking `npm start` in WSL — almost certainly from an `npm install` run from the Windows side against the same checkout. Re-ran `npm install electron` from WSL to restore the Linux binary. WSL and Windows can't share one `node_modules/electron`; keep them in separate checkouts/installs if both sides are used.
+
+### Planned (not yet implemented)
+- **Task manager for the server.** A view of processes running on the relay (list/kill), surfaced through the existing SSH connection rather than a second login.
+- **Multiple SSH sessions.** Support more than one concurrent SSH/terminal session (tabs or a session list) instead of the single tunnel + single terminal the app currently supports.
