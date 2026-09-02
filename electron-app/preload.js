@@ -26,3 +26,14 @@ contextBridge.exposeInMainWorld('terminal', {
   onData: (cb) => ipcRenderer.on('terminal-data', (_evt, data) => cb(data)),
   onClosed: (cb) => ipcRenderer.on('terminal-closed', (_evt, data) => cb(data)),
 });
+
+// Server tools (task manager / specs windows). Data calls resolve to
+// { ok, ... } objects and never throw for connection problems, so the
+// windows can show a plain "not connected" line and keep polling.
+contextBridge.exposeInMainWorld('sysinfo', {
+  processes: () => ipcRenderer.invoke('sysinfo:processes'),
+  specs: () => ipcRenderer.invoke('sysinfo:specs'),
+  kill: (pid, signal) => ipcRenderer.invoke('sysinfo:kill', { pid, signal }),
+  openTaskManager: () => ipcRenderer.invoke('sysinfo:open-task-manager'),
+  openSpecs: () => ipcRenderer.invoke('sysinfo:open-specs'),
+});

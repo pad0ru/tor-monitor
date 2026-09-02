@@ -162,6 +162,7 @@ connectBtn.addEventListener('click', async () => {
     statusPanel.classList.remove('hidden');
     chartSection.classList.remove('hidden');
     document.getElementById('terminal-section').classList.remove('hidden');
+    document.getElementById('tools-section').classList.remove('hidden');
   } catch (err) {
     // Shouldn't normally happen (monitor:connect no longer throws), but
     // guard in case of an unexpected IPC-level failure.
@@ -183,6 +184,14 @@ disconnectBtn.addEventListener('click', async () => {
 function val(id) {
   return document.getElementById(id).value.trim();
 }
+
+// --- Server tools (separate windows) ---
+document.getElementById('openTaskManagerBtn').addEventListener('click', () => {
+  window.sysinfo.openTaskManager();
+});
+document.getElementById('openSpecsBtn').addEventListener('click', () => {
+  window.sysinfo.openSpecs();
+});
 
 // --- Terminal ---
 let term = null;

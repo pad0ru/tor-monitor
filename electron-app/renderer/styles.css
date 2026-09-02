@@ -62,3 +62,82 @@ button:hover:not(:disabled) { background: #34343c; }
   border-radius: 8px;
   padding: 8px;
 }
+
+/* --- shared bits for the main window's tools section --- */
+.hint { font-size: 12px; color: #9a9a9a; }
+
+/* --- tool windows (task manager / server specs) --- */
+body.tool { padding: 16px 18px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
+body.tool h1 { margin: 0 0 2px; }
+.subtitle { margin: 0 0 12px; font-size: 12px; color: #9a9a9a; }
+.spacer { flex: 1; }
+.sub { font-size: 11px; color: #9a9a9a; }
+.warn { color: #e8b84b; }
+.hot { color: #ef9f27; }
+
+.bar { height: 6px; background: #2a2a30; border-radius: 3px; overflow: hidden; margin-top: 6px; }
+.bar-fill { height: 100%; width: 0; background: #5ab55a; border-radius: 3px; transition: width 0.3s; }
+.bar-fill.warn { background: #e8b84b; }
+.bar-fill.crit { background: #e05c5c; }
+
+.summary-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
+.summary-row .stat .value { font-size: 16px; }
+
+.toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.toolbar input { flex: 1; max-width: 360px; }
+.toolbar label.inline { flex-direction: row; align-items: center; gap: 6px; }
+.toolbar select {
+  background: #202024; border: 1px solid #34343a; border-radius: 6px; color: #eaeaea;
+  padding: 5px 7px; font-size: 12px;
+}
+.toolbar button { margin: 0; }
+button.danger { border-color: #7a3a3a; }
+button.danger:hover:not(:disabled) { background: #5a2a2a; }
+
+.confirm {
+  display: flex; align-items: center; gap: 10px;
+  background: #3a2a1a; border: 1px solid #7a5a2a; border-radius: 6px;
+  padding: 8px 12px; margin-bottom: 8px; font-size: 13px;
+}
+.confirm.hidden { display: none; } /* .confirm's display:flex would otherwise beat .hidden */
+.confirm span { flex: 1; }
+.confirm button { margin: 0; padding: 5px 12px; }
+
+.table-wrap { flex: 1; overflow: auto; border: 1px solid #2a2a30; border-radius: 8px; background: #1a1a1e; min-height: 120px; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+thead th {
+  position: sticky; top: 0; background: #222226; color: #b7b7b7; font-weight: 500;
+  text-align: left; padding: 7px 10px; border-bottom: 1px solid #34343a; cursor: pointer;
+  user-select: none; white-space: nowrap;
+}
+thead th:hover { color: #eaeaea; }
+thead th.sorted::after { content: ' ▲'; font-size: 9px; }
+thead th.sorted.desc::after { content: ' ▼'; }
+tbody td { padding: 5px 10px; border-bottom: 1px solid #222226; white-space: nowrap; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* width:100% + max-width:0 makes the command column soak up whatever is
+   left and truncate, instead of stretching the table sideways */
+td.cmd { width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis; color: #b7b7b7; }
+tbody tr:hover { background: #222228; }
+tbody tr.selected { background: #2b3a55; }
+tbody tr.selected td { color: #fff; }
+
+.statusbar { display: flex; gap: 10px; font-size: 12px; color: #9a9a9a; padding-top: 8px; }
+
+/* specs window */
+.motd {
+  background: #111114; border-radius: 8px; padding: 12px 14px; margin: 0 0 14px;
+  font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; line-height: 1.55; color: #cfcfcf;
+}
+.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; overflow: auto; flex: 1; align-content: start; }
+.card { background: #202024; border-radius: 8px; padding: 12px 14px; }
+.card.wide { grid-column: 1 / -1; }
+.card h2 { margin: 0 0 8px; }
+.card dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: 13px; }
+.card dt { color: #9a9a9a; }
+.card dd { margin: 0; overflow-wrap: anywhere; }
+.list { font-size: 13px; }
+.list .row { padding: 6px 0; border-bottom: 1px solid #2a2a30; }
+.list .row:last-child { border-bottom: none; }
+.row-head { display: flex; justify-content: space-between; gap: 10px; }
+.row-head .sub { text-align: right; }

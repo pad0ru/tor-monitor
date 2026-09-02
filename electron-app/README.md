@@ -39,6 +39,37 @@ rendered with `xterm.js` — a real terminal in the app, so you can run
 `nyx`, `journalctl -f`, or anything else directly on the relay without
 switching to PuTTY/a separate SSH client.
 
+## Server tools: Task manager and Server specs
+
+Once connected, a **Server tools** row appears with two buttons. Each
+opens its own window and runs plain shell commands over the *same* SSH
+connection (an `exec` channel per refresh — no second login, and nothing
+to install on the relay beyond a normal Linux userland: `ps`, `lscpu`,
+`lsblk`, `df`, and `/proc` + `/sys`).
+
+- **Task manager** — live process list (PID, name, user, CPU %, memory,
+  threads, state, full command line), sortable by any column and
+  filterable by name/user/PID/command. Summary tiles show system CPU %,
+  memory used/total, load average, process count and uptime. Select a
+  row and press **End process** (SIGTERM) or **Force kill** (SIGKILL) —
+  a confirm bar appears first; `Delete` / `Shift+Delete` do the same for
+  the selected row. CPU % is computed from `/proc/<pid>/stat` tick deltas
+  between two refreshes (top-style, 100 % = one core), so the first
+  reading shows `…` until the second sample arrives. A non-root SSH user
+  can only end its own processes; ending someone else's (e.g. `tor`,
+  which runs as `debian-tor`) gets a clear permission-denied message —
+  use `sudo` in the terminal for those. PID 1 is refused outright.
+- **Server specs** — hardware and health overview, refreshed every 5 s:
+  an Ubuntu-MOTD-style summary (load, root filesystem usage, memory/swap
+  usage, CPU temperature, process/user counts, IPv4), plus cards for the
+  system (hostname, machine model, OS, kernel, uptime, GPU), CPU (model,
+  cores/threads, current/max clock, usage), memory/swap bars, temperature
+  sensors from `hwmon` (with `thermal_zone` as fallback), physical disks
+  and mounted filesystems with usage bars.
+
+If the SSH link drops, both windows show "Not connected to the server"
+and pick up again automatically once the app has reconnected.
+
 ## How the pieces fit together
 
 ```
@@ -92,4 +123,7 @@ which case delete the file and reconnect.
   connected so auto-reconnect can re-dial.)
 - Only one terminal session at a time — opening it again while one is
   already running replaces it.
+- The task manager / specs windows are Linux-only (they read `/proc` and
+  `/sys` on the server), which is fine for the relay but means they'd
+  show an error against a macOS/BSD host.
 - No packaged installer yet, just `npm start` in dev mode.

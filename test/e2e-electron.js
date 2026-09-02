@@ -11,6 +11,8 @@
 const path = require('path');
 const net = require('net');
 const fs = require('fs');
+const os = require('os');
+const { spawn } = require('child_process');
 const { app, BrowserWindow } = require('electron');
 const { TEST_DIR, REPO, ensureHostKey, startAgentStack } = require('./setup');
 
@@ -53,6 +55,15 @@ const sshServer = new ssh2.Server({ hostKeys: [ensureHostKey('ssh_host_key.pem')
       const session = accept();
       session.on('pty', (a) => a && a());
       session.on('window-change', (a) => a && a());
+      session.on('exec', (accept, reject, info) => {
+        const stream = accept();
+        stream.on('error', () => {});
+        const child = spawn('/bin/sh', ['-c', info.command], { stdio: ['ignore', 'pipe', 'pipe'] });
+        child.stdout.on('data', (d) => stream.write(d));
+        child.stderr.on('data', (d) => stream.stderr.write(d));
+        child.on('close', (code) => { stream.exit(code == null ? 1 : code); stream.end(); });
+        child.on('error', () => { stream.exit(127); stream.end(); });
+      });
       session.on('shell', (accept) => {
         const stream = accept();
         stream.write('E2E-SHELL-READY$ ');
@@ -149,8 +160,67 @@ app.whenReady().then(async () => {
   check('terminal round-trip (input echoed by shell)', echoed.includes('echo-test'),
     JSON.stringify(echoed.trim().slice(0, 80)));
 
+  // server tool windows (task manager + specs), opened from the main window
+  await js(`document.getElementById('openTaskManagerBtn').click(); document.getElementById('openSpecsBtn').click(); 'ok'`);
+  await sleep(4000);
+  const titles = () => BrowserWindow.getAllWindows().map((w) => w.getTitle());
+  const tmWin = BrowserWindow.getAllWindows().find((w) => w.getTitle() === 'Task manager');
+  const spWin = BrowserWindow.getAllWindows().find((w) => w.getTitle() === 'Server specs');
+  check('task manager + specs windows opened', !!tmWin && !!spWin, titles().join(','));
+  if (tmWin) {
+    const tjs = (code) => tmWin.webContents.executeJavaScript(code, true);
+    const tm = await tjs(`({
+      rows: document.querySelectorAll('#procBody tr').length,
+      cpu: document.getElementById('sumCpu').textContent,
+      mem: document.getElementById('sumMem').textContent,
+      status: document.getElementById('status').textContent
+    })`);
+    check('task manager lists processes', tm.rows > 5, JSON.stringify(tm));
+    check('task manager summary populated (CPU %, memory)', /%/.test(tm.cpu) && /\//.test(tm.mem), JSON.stringify(tm));
+    const sel = await tjs(`(() => {
+      document.querySelector('#procBody tr').click();
+      const enabled = !document.getElementById('endBtn').disabled;
+      const selected = document.querySelectorAll('#procBody tr.selected').length;
+      document.getElementById('endBtn').click();
+      const confirmShown = !document.getElementById('confirmBar').classList.contains('hidden');
+      document.getElementById('confirmNo').click();
+      const confirmHidden = document.getElementById('confirmBar').classList.contains('hidden');
+      document.getElementById('filter').value = '${process.pid}';
+      document.getElementById('filter').dispatchEvent(new Event('input'));
+      return { enabled, selected, confirmShown, confirmHidden, filtered: document.querySelectorAll('#procBody tr').length };
+    })()`);
+    check('row select enables End process, confirm bar shows/cancels, filter narrows',
+      sel.enabled && sel.selected === 1 && sel.confirmShown && sel.confirmHidden && sel.filtered >= 1 && sel.filtered < tm.rows,
+      JSON.stringify(sel));
+  }
+  if (spWin) {
+    const sp = await spWin.webContents.executeJavaScript(`({
+      host: document.getElementById('sysHostname').textContent,
+      cpu: document.getElementById('cpuModel').textContent,
+      ram: document.getElementById('memRam').textContent,
+      motd: document.getElementById('motd').textContent,
+      fsRows: document.querySelectorAll('#filesystems .row').length
+    })`, true);
+    check('specs window shows hostname / cpu / ram / filesystems',
+      sp.host === os.hostname() && sp.cpu.length > 3 && /used of/.test(sp.ram) && sp.fsRows >= 1,
+      JSON.stringify(sp).slice(0, 200));
+    check('MOTD-style summary rendered', /System load/.test(sp.motd) && /Memory usage/.test(sp.motd) && /IPv4/.test(sp.motd),
+      sp.motd.split('\n')[0]);
+  }
+  await js(`document.getElementById('openTaskManagerBtn').click(); 'ok'`);
+  await sleep(500);
+  check('reopening task manager reuses the existing window',
+    titles().filter((t) => t === 'Task manager').length === 1, titles().join(','));
+
   await js(`document.getElementById('disconnectBtn').click(); 'ok'`);
   await sleep(1500);
+  if (tmWin && !tmWin.isDestroyed()) {
+    await sleep(2500); // next poll after the disconnect
+    const st = await tmWin.webContents.executeJavaScript(`document.getElementById('status').textContent`, true);
+    check('task manager reports not connected after disconnect', /not connected/i.test(st), st);
+    tmWin.close();
+  }
+  if (spWin && !spWin.isDestroyed()) spWin.close();
   const post = await js(`({
     status: document.getElementById('sshStatus').textContent,
     connEnabled: !document.getElementById('connectBtn').disabled

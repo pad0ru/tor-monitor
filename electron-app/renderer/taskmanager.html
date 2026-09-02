@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'" />
+<title>Task manager</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body class="tool">
+  <div class="summary-row">
+    <div class="stat"><span class="label">CPU</span><span class="value" id="sumCpu">-</span>
+      <div class="bar" id="barCpu"><div class="bar-fill"></div></div></div>
+    <div class="stat"><span class="label">Memory</span><span class="value" id="sumMem">-</span>
+      <div class="bar" id="barMem"><div class="bar-fill"></div></div></div>
+    <div class="stat"><span class="label">Load average</span><span class="value" id="sumLoad">-</span>
+      <span class="sub" id="sumCores">-</span></div>
+    <div class="stat"><span class="label">Processes</span><span class="value" id="sumProcs">-</span>
+      <span class="sub" id="sumUptime">-</span></div>
+  </div>
+
+  <div class="toolbar">
+    <input id="filter" placeholder="Filter by name, user, PID or command" />
+    <label class="inline">Refresh
+      <select id="interval">
+        <option value="1000">1s</option>
+        <option value="2000" selected>2s</option>
+        <option value="5000">5s</option>
+        <option value="0">paused</option>
+      </select>
+    </label>
+    <span class="spacer"></span>
+    <button id="endBtn" disabled title="Send SIGTERM (asks the process to exit cleanly)">End process</button>
+    <button id="killBtn" disabled class="danger" title="Send SIGKILL (forced, cannot be ignored)">Force kill</button>
+  </div>
+
+  <div id="confirmBar" class="confirm hidden">
+    <span id="confirmText"></span>
+    <button id="confirmYes" class="danger">Confirm</button>
+    <button id="confirmNo">Cancel</button>
+  </div>
+
+  <div class="table-wrap">
+    <table id="procTable">
+      <thead>
+        <tr>
+          <th data-sort="pid" class="num">PID</th>
+          <th data-sort="name">Name</th>
+          <th data-sort="user">User</th>
+          <th data-sort="cpuPercent" class="num sorted desc">CPU %</th>
+          <th data-sort="memPercent" class="num">Mem %</th>
+          <th data-sort="rssBytes" class="num">Memory</th>
+          <th data-sort="threads" class="num">Threads</th>
+          <th data-sort="state">State</th>
+          <th data-sort="args">Command</th>
+        </tr>
+      </thead>
+      <tbody id="procBody"></tbody>
+    </table>
+  </div>
+
+  <div class="statusbar">
+    <span id="status">Loading…</span>
+    <span class="spacer"></span>
+    <span id="shown"></span>
+  </div>
+
+  <script src="common.js"></script>
+  <script src="taskmanager.js"></script>
+</body>
+</html>

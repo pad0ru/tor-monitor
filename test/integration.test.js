@@ -5,8 +5,10 @@
  * - Stubs the 'electron' module (fake-electron.js) so the REAL main.js
  *   runs under plain node; ipc handlers are invoked directly.
  * - Runs a REAL SSH server (ssh2.Server) in-process: password auth,
- *   direct-tcpip forwarding, shell with pty + window-change, and a
- *   hard-drop switch for testing reconnect.
+ *   direct-tcpip forwarding, shell with pty + window-change, exec (runs
+ *   the command locally with /bin/sh, so the task manager / specs
+ *   checks see this machine's real /proc data), and a hard-drop switch
+ *   for testing reconnect.
  * - Spawns the mock Tor control port + the real relay agent so the
  *   tunnel test is end-to-end.
  * - Makes one real HTTPS request to onionoo.torproject.org (a lookup
@@ -16,6 +18,8 @@ const path = require('path');
 const net = require('net');
 const fs = require('fs');
 const Module = require('module');
+const os = require('os');
+const { spawn } = require('child_process');
 const { TEST_DIR, REPO, ensureHostKey, startAgentStack } = require('./setup');
 
 const APP_DIR = path.join(REPO, 'electron-app');
@@ -98,6 +102,15 @@ const sshServer = new ssh2.Server({ hostKeys: [ensureHostKey('ssh_host_key.pem')
       session.on('window-change', (accept, reject, info) => {
         shellState.windowChanges.push(info);
         accept && accept();
+      });
+      session.on('exec', (accept, reject, info) => {
+        const stream = accept();
+        stream.on('error', () => {});
+        const child = spawn('/bin/sh', ['-c', info.command], { stdio: ['ignore', 'pipe', 'pipe'] });
+        child.stdout.on('data', (d) => stream.write(d));
+        child.stderr.on('data', (d) => stream.stderr.write(d));
+        child.on('close', (code) => { stream.exit(code == null ? 1 : code); stream.end(); });
+        child.on('error', () => { stream.exit(127); stream.end(); });
       });
       session.on('shell', (accept) => {
         const stream = accept();
@@ -205,6 +218,66 @@ async function main() {
   check('bogus resize ignored', shellState.windowChanges.length === 1 ||
     shellState.windowChanges[shellState.windowChanges.length - 1].cols === 132);
 
+  // 4b. server tools (task manager + specs) over the same SSH connection.
+  // The mock sshd runs the collection scripts locally, so the numbers
+  // can be cross-checked against this process / node's os module.
+  {
+    const first = await fake.__invoke('sysinfo:processes');
+    check('process list returned', first.ok === true && Array.isArray(first.processes) && first.processes.length > 5,
+      first.error || `n=${first.processes && first.processes.length}`);
+    const me = first.ok ? first.processes.find((p) => p.pid === process.pid) : null;
+    check('own process present with user/args/rss/threads',
+      !!me && me.user !== '?' && /node|electron/i.test(me.args) && me.rssBytes > 0 && me.threads >= 1,
+      JSON.stringify(me && { user: me.user, args: me.args.slice(0, 40), rss: me.rssBytes, thr: me.threads }));
+    check('first sample has no CPU % yet (needs a delta)', first.cpuPercent === null && !!me && me.cpuPercent === null);
+    const busyUntil = Date.now() + 300; // burn CPU so our own delta is > 0
+    while (Date.now() < busyUntil) { /* spin */ }
+    await sleep(200);
+    const second = await fake.__invoke('sysinfo:processes');
+    const me2 = second.ok ? second.processes.find((p) => p.pid === process.pid) : null;
+    check('second sample has system + per-process CPU %',
+      second.ok && typeof second.cpuPercent === 'number' && !!me2 && typeof me2.cpuPercent === 'number' && me2.cpuPercent > 0,
+      JSON.stringify({ sys: second.cpuPercent, me: me2 && me2.cpuPercent }));
+    check('memory/load/uptime summary parsed',
+      second.ok && second.mem.totalBytes === os.totalmem() && second.mem.usedBytes > 0 &&
+      Array.isArray(second.load) && second.load.length === 3 && second.uptimeSeconds > 0 && second.ncpu >= 1,
+      JSON.stringify({ mem: second.mem, load: second.load, ncpu: second.ncpu }));
+
+    // kill: a throwaway child of ours must exit on TERM
+    const victim = spawn('sleep', ['300'], { stdio: 'ignore' });
+    const victimExit = new Promise((r) => victim.on('exit', (_code, sig) => r(sig)));
+    await sleep(200);
+    const k = await fake.__invoke('sysinfo:kill', { pid: victim.pid, signal: 'TERM' });
+    const sig = await Promise.race([victimExit, sleep(3000).then(() => 'timeout')]);
+    check('kill TERM ends own process', k.ok === true && sig === 'SIGTERM', JSON.stringify({ k, sig }));
+    const bad = await fake.__invoke('sysinfo:kill', { pid: '1; rm -rf /', signal: 'TERM' });
+    check('kill rejects non-integer pid (no shell injection)', bad.ok === false && /invalid/i.test(bad.error), bad.error);
+    const init = await fake.__invoke('sysinfo:kill', { pid: 1 });
+    check('kill refuses PID 1', init.ok === false && /PID 1/.test(init.error), init.error);
+    if (process.getuid && process.getuid() !== 0) {
+      const other = await fake.__invoke('sysinfo:kill', { pid: 2, signal: 'KILL' }); // root-owned
+      check("kill of another user's process -> permission denied message",
+        other.ok === false && /permission denied/i.test(other.error), other.error);
+    }
+    const gone = await fake.__invoke('sysinfo:kill', { pid: 4194300 });
+    check('kill of missing pid -> no longer exists message', gone.ok === false && /no longer exists/i.test(gone.error), gone.error);
+
+    const specs = await fake.__invoke('sysinfo:specs');
+    check('specs: hostname / os / kernel', specs.ok === true && specs.system.hostname === os.hostname() &&
+      typeof specs.system.os === 'string' && /Linux/.test(specs.system.kernel || ''),
+      specs.error || JSON.stringify(specs.system));
+    check('specs: cpu model + thread count', specs.ok && typeof specs.cpu.model === 'string' && specs.cpu.model.length > 3 &&
+      specs.cpu.threads === os.cpus().length, JSON.stringify(specs.cpu));
+    check('specs: memory total matches os.totalmem()', specs.ok && specs.memory.totalBytes === os.totalmem());
+    check('specs: root filesystem listed with usage', specs.ok &&
+      specs.filesystems.some((f) => f.mount === '/' && f.sizeBytes > 0 && f.usedPercent >= 0),
+      JSON.stringify(specs.filesystems).slice(0, 160));
+    check('specs: disks + temperatures are arrays', specs.ok && Array.isArray(specs.disks) && Array.isArray(specs.temperatures),
+      `disks=${specs.disks && specs.disks.length} temps=${specs.temperatures && specs.temperatures.length}`);
+    check('specs: uptime/load/process count', specs.ok && specs.system.uptimeSeconds > 0 && Array.isArray(specs.system.load) &&
+      specs.system.processes > 5);
+  }
+
   // 5. hard-drop the SSH connection mid-session -> reconnect + stats resume
   const reconStatus = waitForSend(
     (e) => e.channel === 'ssh-status' && e.payload.state === 'reconnecting',
@@ -243,6 +316,10 @@ async function main() {
   await sleep(3300);
   check('disconnect stays disconnected (no zombie reconnect)', liveConns.size === 0,
     `live=${liveConns.size}`);
+  {
+    const r = await fake.__invoke('sysinfo:processes');
+    check('server tools report not connected after disconnect', r.ok === false && /not connected/i.test(r.error), r.error);
+  }
 
   // 8. unreachable agent: connect with agentPort pointing nowhere
   const unreachable = waitForSend(

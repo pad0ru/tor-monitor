@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'" />
+<title>Server specs</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body class="tool">
+  <h1 id="specHost">Server specs</h1>
+  <p id="specOsLine" class="subtitle">-</p>
+
+  <!-- MOTD-style summary, like Ubuntu's login banner -->
+  <pre id="motd" class="motd">loading…</pre>
+
+  <div class="cards">
+    <section class="card">
+      <h2>System</h2>
+      <dl>
+        <dt>Hostname</dt><dd id="sysHostname">-</dd>
+        <dt>Machine</dt><dd id="sysMachine">-</dd>
+        <dt>OS</dt><dd id="sysOs">-</dd>
+        <dt>Kernel</dt><dd id="sysKernel">-</dd>
+        <dt>Uptime</dt><dd id="sysUptime">-</dd>
+        <dt>IPv4</dt><dd id="sysIp">-</dd>
+        <dt>GPU</dt><dd id="sysGpu">-</dd>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2>CPU</h2>
+      <dl>
+        <dt>Model</dt><dd id="cpuModel">-</dd>
+        <dt>Cores</dt><dd id="cpuCores">-</dd>
+        <dt>Architecture</dt><dd id="cpuArch">-</dd>
+        <dt>Clock</dt><dd id="cpuClock">-</dd>
+        <dt>Load average</dt><dd id="cpuLoad">-</dd>
+        <dt>Usage</dt><dd id="cpuUsage">-</dd>
+      </dl>
+      <div class="bar" id="barCpu"><div class="bar-fill"></div></div>
+    </section>
+
+    <section class="card">
+      <h2>Memory</h2>
+      <dl>
+        <dt>RAM</dt><dd id="memRam">-</dd>
+        <dt>Available</dt><dd id="memAvail">-</dd>
+      </dl>
+      <div class="bar" id="barMem"><div class="bar-fill"></div></div>
+      <dl>
+        <dt>Swap</dt><dd id="memSwap">-</dd>
+      </dl>
+      <div class="bar" id="barSwap"><div class="bar-fill"></div></div>
+    </section>
+
+    <section class="card">
+      <h2>Temperatures</h2>
+      <div id="temps" class="list">-</div>
+    </section>
+
+    <section class="card wide">
+      <h2>Storage</h2>
+      <div id="disks" class="list">-</div>
+      <div id="filesystems" class="list"></div>
+    </section>
+  </div>
+
+  <div class="statusbar">
+    <span id="status">Loading…</span>
+  </div>
+
+  <script src="common.js"></script>
+  <script src="specs.js"></script>
+</body>
+</html>

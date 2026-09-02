@@ -22,7 +22,14 @@ tunnel (mock control port → relay agent → tunnel → main process), a real
 Onionoo HTTPS lookup (needs internet), terminal open/echo/resize, hard
 SSH drop → auto-reconnect → stats resume → terminal reopen, clean
 disconnect, unreachable agent, host-key change refusal (TOFU pinning),
-and invalid fingerprint handling.
+and invalid fingerprint handling. The mock sshd also serves `exec`
+requests by running the command locally with `/bin/sh`, so the server
+tools are tested against this machine's real `/proc`: process list
+(own pid present, CPU % appears on the second sample, memory total
+matches `os.totalmem()`), kill (TERM ends a child `sleep`; bad pid,
+PID 1, another user's process and a missing pid each get their specific
+error), specs (hostname/kernel/CPU model/thread count/root filesystem),
+and "not connected" after disconnect.
 
 ## End-to-end UI test (real Electron window)
 
@@ -32,7 +39,10 @@ cd electron-app && npx electron ../test/e2e-electron.js   # add --no-sandbox on 
 
 Opens the real app window, fills the connect form against the mock SSH
 server, and verifies the status panel, live chart, xterm terminal
-round-trip, disconnect, and that the renderer logs no console errors.
+round-trip, the Task manager and Server specs windows (rows rendered,
+summary tiles, row selection + confirm bar + filter, MOTD summary,
+reopening reuses the window, "not connected" after disconnect),
+disconnect, and that no window logs console errors.
 
 ## Agent-only manual poke
 

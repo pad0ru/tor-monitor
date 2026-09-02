@@ -21,6 +21,11 @@ class BrowserWindow {
     this.webContents = fakeWebContents;
   }
   loadFile() {}
+  on() {}
+  focus() {}
+  restore() {}
+  close() {}
+  isMinimized() { return false; }
   isDestroyed() { return false; }
   static getAllWindows() { return BrowserWindow._instance ? [BrowserWindow._instance] : []; }
 }
