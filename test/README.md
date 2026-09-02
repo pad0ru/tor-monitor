@@ -29,7 +29,7 @@ tools are tested against this machine's real `/proc`: process list
 matches `os.totalmem()`), kill (TERM ends a child `sleep`; bad pid,
 PID 1, another user's process and a missing pid each get their specific
 error), specs (hostname/kernel/CPU model/thread count/root filesystem),
-and "not connected" after disconnect.
+and "not connected" after disconnect. Security checks: a specs payload with `__proto__`/`constructor` keys parses correctly without polluting `Object.prototype`, and a stalled `exec` channel is bounded by the timeout (the connection recovers after).
 
 ## End-to-end UI test (real Electron window)
 
@@ -41,7 +41,7 @@ Opens the real app window, fills the connect form against the mock SSH
 server, and verifies the status panel, live chart, xterm terminal
 round-trip, the Task manager and Server specs windows (rows rendered,
 summary tiles, row selection + confirm bar + filter, MOTD summary,
-reopening reuses the window, "not connected" after disconnect),
+reopening reuses the window, "not connected" after disconnect; ending a real process through the UI removes its row and clears the selection; `window.open` and off-`file://` navigation are denied),
 disconnect, and that no window logs console errors.
 
 ## Agent-only manual poke

@@ -30,6 +30,9 @@ const LOCAL_PORT = 15072;
 
 // --- electron stub injection ---
 process.env.FAKE_USERDATA = TEST_DIR;
+// Shorten sshExec's timeout so the "stalled channel" check resolves fast.
+// Real local /proc collection finishes in well under this.
+process.env.EXEC_TIMEOUT_MS = '2500';
 const fakeElectronPath = path.join(TEST_DIR, 'fake-electron.js');
 const origResolve = Module._resolveFilename;
 Module._resolveFilename = function (request, ...rest) {
@@ -71,6 +74,36 @@ function waitForSend(pred, timeoutMs, label) {
 const shellState = { received: '', windowChanges: [] };
 const liveConns = new Set();
 
+// Test switches for the exec handler (security checks below).
+let stallExec = false;     // accept the exec channel but never stream/exit
+let poisonSpecs = false;   // return crafted specs output with prototype-mutating keys
+// A full specs payload (all @@ sections parseSpecs needs) whose @@OS and
+// @@LSCPU carry __proto__ keys — a hostile relay trying to pollute
+// Object.prototype through the parsers.
+const POISONED_SPECS = [
+  '@@HOST', 'poison-host',
+  '@@OS', 'PRETTY_NAME="PoisonOS"', '__proto__=pwned',
+  '@@KERNEL', 'Linux poison x86_64',
+  '@@UPTIME', '123.0 456.0',
+  '@@LOAD', '0.1 0.2 0.3',
+  '@@NPROC', '2',
+  '@@LSCPU', 'Model name: Poison CPU', '__proto__: polluted', 'constructor: nope',
+  '@@CPUINFO', 'model name : Poison CPU',
+  '@@CPUMHZ', '',
+  '@@CPU', 'cpu 1 2 3 4 5 6 7 8',
+  '@@MEM', 'MemTotal: 1000 kB', 'MemAvailable: 400 kB', 'SwapTotal: 0 kB', 'SwapFree: 0 kB',
+  '@@DISKS', '',
+  '@@DF', 'Filesystem 1-blocks Used Available Capacity Mounted-on',
+  '@@THERMAL', '',
+  '@@HWMON', '',
+  '@@USERS', '0',
+  '@@PROCS', '42',
+  '@@IP', '10.0.0.9',
+  '@@GPU', '',
+  '@@DMI', '',
+  '',
+].join('\n');
+
 const sshServer = new ssh2.Server({ hostKeys: [ensureHostKey('ssh_host_key.pem')] }, (client) => {
   liveConns.add(client);
   client.on('close', () => liveConns.delete(client));
@@ -106,6 +139,13 @@ const sshServer = new ssh2.Server({ hostKeys: [ensureHostKey('ssh_host_key.pem')
       session.on('exec', (accept, reject, info) => {
         const stream = accept();
         stream.on('error', () => {});
+        if (stallExec) return; // never write or exit -> exercises sshExec's timeout
+        if (poisonSpecs && info.command.includes('@@LSCPU')) {
+          stream.write(POISONED_SPECS);
+          stream.exit(0);
+          stream.end();
+          return;
+        }
         const child = spawn('/bin/sh', ['-c', info.command], { stdio: ['ignore', 'pipe', 'pipe'] });
         child.stdout.on('data', (d) => stream.write(d));
         child.stderr.on('data', (d) => stream.stderr.write(d));
@@ -276,6 +316,38 @@ async function main() {
       `disks=${specs.disks && specs.disks.length} temps=${specs.temperatures && specs.temperatures.length}`);
     check('specs: uptime/load/process count', specs.ok && specs.system.uptimeSeconds > 0 && Array.isArray(specs.system.load) &&
       specs.system.processes > 5);
+  }
+
+  // 4c. security hardening: prototype pollution + exec timeout.
+  {
+    // A hostile relay emitting __proto__/constructor keys in os-release
+    // and lscpu must not pollute Object.prototype, and the specs must
+    // still parse with its real values.
+    const canary = {};
+    poisonSpecs = true;
+    const specs = await fake.__invoke('sysinfo:specs');
+    poisonSpecs = false;
+    check('poisoned specs still parse (real values kept)',
+      specs.ok === true && specs.system.os === 'PoisonOS' && specs.cpu.model === 'Poison CPU',
+      specs.error || JSON.stringify(specs.system));
+    check('no prototype pollution from crafted server output',
+      canary.pwned === undefined && ({}).pwned === undefined &&
+      Object.prototype.pwned === undefined && Object.prototype.polluted === undefined,
+      JSON.stringify({ pwned: ({}).pwned, polluted: ({}).polluted }));
+
+    // A stalled exec channel (accepted but never streaming/closing) must
+    // be bounded by the timeout, not hang the polling window forever.
+    stallExec = true;
+    const t0 = Date.now();
+    const stalled = await fake.__invoke('sysinfo:processes');
+    const elapsed = Date.now() - t0;
+    stallExec = false;
+    check('stalled exec times out instead of hanging',
+      stalled.ok === false && /timed out|timeout/i.test(stalled.error) && elapsed < 6000,
+      `${stalled.error} in ${elapsed}ms`);
+    // the connection must still be usable afterwards
+    const after = await fake.__invoke('sysinfo:processes');
+    check('server tools recover after a timed-out exec', after.ok === true, after.error);
   }
 
   // 5. hard-drop the SSH connection mid-session -> reconnect + stats resume

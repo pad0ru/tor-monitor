@@ -193,8 +193,13 @@ async function authenticate() {
 }
 
 function repliesToMap(replies) {
-  const values = {};
-  for (const r of replies) values[r.key] = r.value;
+  // null-proto + skip prototype-mutating keys, so a malformed/hostile
+  // ControlPort reply can't pollute Object.prototype through the key.
+  const values = Object.create(null);
+  for (const r of replies) {
+    if (r.key === '__proto__' || r.key === 'constructor' || r.key === 'prototype') continue;
+    values[r.key] = r.value;
+  }
   return values;
 }
 

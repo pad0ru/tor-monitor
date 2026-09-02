@@ -70,6 +70,40 @@ to install on the relay beyond a normal Linux userland: `ps`, `lscpu`,
 If the SSH link drops, both windows show "Not connected to the server"
 and pick up again automatically once the app has reconnected.
 
+## Security model
+
+The app is built to a "trust the user, not the wire or the relay's output"
+posture:
+
+- **SSH host-key pinning (TOFU).** The relay's key is pinned on first
+  connect (`known_hosts.json` in userData); a later mismatch is refused
+  with a MITM warning, so a swapped key can't silently harvest your
+  password.
+- **Credentials stay in memory.** Password/passphrase/key and the agent
+  token are held only for the session (for auto-reconnect) and never
+  written to disk or logged.
+- **Relay agent is localhost-only.** It binds `127.0.0.1`, reached only
+  through the SSH tunnel, with an optional shared token compared in
+  constant time.
+- **Renderer is locked down.** `contextIsolation` on, `nodeIntegration`
+  off, `sandbox` on, a strict CSP (`connect-src 'none'`) on every page,
+  and all server-supplied text (process names, command lines,
+  os-release, etc.) rendered via `textContent`/DOM APIs — never
+  `innerHTML`. The main process denies pop-ups (`setWindowOpenHandler`),
+  off-`file://` navigation (`will-navigate`), `<webview>` embedding, and
+  all device-permission requests.
+- **Kill is validated.** `sysinfo:kill` only accepts a positive integer
+  pid and a `TERM`/`KILL` signal, refuses PID 1, and never interpolates
+  unchecked input into a shell string. The task manager tracks the
+  selected process by pid **and** name, so a recycled pid can't redirect
+  a kill at an unrelated process.
+- **Hostile-output hardening (defense in depth).** All parsers of relay
+  command output build null-prototype objects and drop
+  `__proto__`/`constructor`/`prototype` keys, so a compromised relay
+  can't pollute `Object.prototype`. Each `exec` is bounded by a timeout
+  (covering channel-open too) and an output cap, so a wedged or flooding
+  relay can't hang or exhaust the app.
+
 ## How the pieces fit together
 
 ```

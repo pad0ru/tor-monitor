@@ -192,6 +192,35 @@ app.whenReady().then(async () => {
     check('row select enables End process, confirm bar shows/cancels, filter narrows',
       sel.enabled && sel.selected === 1 && sel.confirmShown && sel.confirmHidden && sel.filtered >= 1 && sel.filtered < tm.rows,
       JSON.stringify(sel));
+
+    // End a real process through the UI, then confirm the row disappears
+    // and the selection (tracked by pid + name) clears — the same code
+    // path that protects against signalling a recycled pid.
+    const victim = spawn('sleep', ['600'], { stdio: 'ignore' });
+    await sleep(2600); // let a poll pick it up
+    const picked = await tjs(`(() => {
+      document.getElementById('filter').value = '${victim.pid}';
+      document.getElementById('filter').dispatchEvent(new Event('input'));
+      const row = [...document.querySelectorAll('#procBody tr')].find((r) => r.dataset.pid === '${victim.pid}');
+      if (row) row.click();
+      return { found: !!row, selected: document.querySelectorAll('#procBody tr.selected').length,
+               endEnabled: !document.getElementById('endBtn').disabled };
+    })()`);
+    await tjs(`document.getElementById('endBtn').click();
+               document.getElementById('confirmYes').click(); 'ended'`);
+    await sleep(3200); // TERM delivery + a refresh cycle
+    const cleared = await tjs(`({
+      stillListed: [...document.querySelectorAll('#procBody tr')].filter((r) => r.dataset.pid === '${victim.pid}').length,
+      selected: document.querySelectorAll('#procBody tr.selected').length,
+      endEnabled: !document.getElementById('endBtn').disabled
+    })`);
+    check('ending a selected process via the UI removes it and clears the selection',
+      picked.found && picked.selected === 1 && picked.endEnabled &&
+      cleared.stillListed === 0 && cleared.selected === 0 && !cleared.endEnabled,
+      JSON.stringify({ picked, cleared }));
+    try { process.kill(victim.pid); } catch (_e) {}
+    await tjs(`document.getElementById('filter').value = '';
+               document.getElementById('filter').dispatchEvent(new Event('input')); 'cleared filter'`);
   }
   if (spWin) {
     const sp = await spWin.webContents.executeJavaScript(`({
@@ -207,6 +236,18 @@ app.whenReady().then(async () => {
     check('MOTD-style summary rendered', /System load/.test(sp.motd) && /Memory usage/.test(sp.motd) && /IPv4/.test(sp.motd),
       sp.motd.split('\n')[0]);
   }
+  // Electron hardening: popups and off-file:// navigation are denied.
+  const winsBefore = BrowserWindow.getAllWindows().length;
+  const openDenied = await js(`(() => { const w = window.open('https://example.com/'); return w === null; })()`);
+  await sleep(400);
+  const winsAfter = BrowserWindow.getAllWindows().length;
+  check('window.open() is denied (no popup created)',
+    openDenied === true && winsAfter === winsBefore, JSON.stringify({ openDenied, winsBefore, winsAfter }));
+  await js(`(() => { try { window.location.href = 'https://example.com/'; } catch (_e) {} return 'tried'; })()`);
+  await sleep(600);
+  const proto = await js(`window.location.protocol`);
+  check('external navigation is blocked (stays on file://)', proto === 'file:', proto);
+
   await js(`document.getElementById('openTaskManagerBtn').click(); 'ok'`);
   await sleep(500);
   check('reopening task manager reuses the existing window',

@@ -11,7 +11,13 @@ const confirmBar = document.getElementById('confirmBar');
 const confirmText = document.getElementById('confirmText');
 
 let latest = null; // last successful snapshot from the server
+// Selection is tracked by pid AND name together: a pid can be recycled
+// by the kernel for an unrelated process between refreshes, so matching
+// on the number alone could silently re-target End/Force-kill at the
+// wrong process. The name changing (or the row vanishing) drops the
+// selection instead.
 let selectedPid = null;
+let selectedName = null;
 let sortKey = 'cpuPercent';
 let sortDesc = true;
 let pendingKill = null; // { pid, name, signal }
@@ -92,14 +98,23 @@ function renderTable() {
 
   // Rebuild the body with DOM APIs (never innerHTML — process names and
   // command lines come straight from the server).
+  // Drop the selection if the exact process (pid + name) is no longer in
+  // the full list — it exited, or its pid was recycled for something
+  // else. Checked against latest.processes, not the filtered rows, so a
+  // selection that is merely filtered out of view survives.
+  if (selectedPid !== null &&
+      !latest.processes.some((p) => p.pid === selectedPid && p.name === selectedName)) {
+    selectedPid = null;
+    selectedName = null;
+    hideConfirm();
+  }
+
   const frag = document.createDocumentFragment();
-  let selectedStillPresent = false;
   for (const p of rows) {
     const tr = document.createElement('tr');
     tr.dataset.pid = String(p.pid);
-    if (p.pid === selectedPid) {
+    if (p.pid === selectedPid && p.name === selectedName) {
       tr.classList.add('selected');
-      selectedStillPresent = true;
     }
     addCell(tr, p.pid, 'num');
     addCell(tr, p.name);
@@ -114,11 +129,6 @@ function renderTable() {
     frag.appendChild(tr);
   }
   procBody.replaceChildren(frag);
-  if (selectedPid !== null && !selectedStillPresent && !q) {
-    // process went away
-    selectedPid = null;
-    hideConfirm();
-  }
   updateButtons();
   shownEl.textContent = q ? `${rows.length} of ${latest.processes.length} shown` : `${rows.length} processes`;
 }
@@ -138,12 +148,17 @@ function updateButtons() {
 }
 
 function selectedProcess() {
-  return latest ? latest.processes.find((p) => p.pid === selectedPid) : null;
+  return latest ? latest.processes.find((p) => p.pid === selectedPid && p.name === selectedName) : null;
 }
 
 function askKill(signal) {
   const p = selectedProcess();
-  if (!p) return;
+  if (!p) {
+    // selection went stale between the last render and this click
+    statusEl.classList.add('warn');
+    statusEl.textContent = 'That process is no longer in the list — select another.';
+    return;
+  }
   pendingKill = { pid: p.pid, name: p.name, signal };
   confirmText.textContent = signal === 'KILL'
     ? `Force kill PID ${p.pid} (${p.name})? It gets no chance to save anything.`
@@ -177,7 +192,14 @@ procBody.addEventListener('click', (e) => {
   const tr = e.target.closest('tr');
   if (!tr) return;
   const pid = parseInt(tr.dataset.pid, 10);
-  selectedPid = selectedPid === pid ? null : pid;
+  const proc = latest && latest.processes.find((p) => p.pid === pid);
+  if (selectedPid === pid && proc && selectedName === proc.name) {
+    selectedPid = null;
+    selectedName = null;
+  } else {
+    selectedPid = pid;
+    selectedName = proc ? proc.name : null;
+  }
   hideConfirm();
   renderTable();
 });

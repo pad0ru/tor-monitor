@@ -32,6 +32,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
@@ -42,6 +43,22 @@ function createWindow() {
 }
 
 app.whenReady().then(createWindow);
+
+// Defense-in-depth for every web contents the app creates. The renderer
+// only ever loads local files and never legitimately opens a popup,
+// navigates off file://, embeds a <webview>, or needs a device
+// permission — so deny all of it. This limits the blast radius if
+// injected content (a crafted process name, os-release string, terminal
+// escape, etc.) ever tried to escape the page.
+app.on('web-contents-created', (_e, contents) => {
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  contents.on('will-navigate', (e, url) => {
+    if (!url.startsWith('file://')) e.preventDefault();
+  });
+  contents.on('will-attach-webview', (e) => e.preventDefault());
+  contents.session.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+});
+
 app.on('window-all-closed', () => {
   fullTeardown();
   if (process.platform !== 'darwin') app.quit();
@@ -447,7 +464,7 @@ ipcMain.on('terminal:resize', (_evt, { cols, rows }) => {
 // polls via invoke; when the SSH link is down the calls just return
 // { ok: false } and the windows show "not connected" until it is back.
 
-const EXEC_TIMEOUT_MS = 15000;
+const EXEC_TIMEOUT_MS = parseInt(process.env.EXEC_TIMEOUT_MS || '15000', 10);
 const EXEC_MAX_STDOUT = 4 * 1024 * 1024;
 const EXEC_MAX_STDERR = 64 * 1024;
 
@@ -457,24 +474,42 @@ function sshExec(command) {
       reject(new Error('not connected'));
       return;
     }
-    sshClient.exec(command, (err, stream) => {
-      if (err) {
-        reject(err);
+    let stdout = '';
+    let stderr = '';
+    let done = false;
+    let stream = null;
+    const cleanup = () => {
+      if (!stream) return;
+      stream.removeAllListeners();
+      if (stream.stderr) stream.stderr.removeAllListeners();
+      stream.on('error', () => {}); // swallow late errors from the closing channel
+      try { stream.close(); } catch (_e) {}
+    };
+    const finish = (fn, arg) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      fn(arg);
+    };
+    // Start the timer before exec() so a stall during channel-open /
+    // exec-request negotiation is bounded too — not just a stall after
+    // the stream is already flowing. Otherwise a wedged relay could hang
+    // the polling window forever (the exec callback would never fire).
+    const timer = setTimeout(() => {
+      cleanup();
+      finish(reject, new Error('command timed out'));
+    }, EXEC_TIMEOUT_MS);
+    sshClient.exec(command, (err, s) => {
+      if (done) {
+        // already timed out; drop the late-arriving channel
+        if (s) { try { s.close(); } catch (_e) {} }
         return;
       }
-      let stdout = '';
-      let stderr = '';
-      let done = false;
-      const finish = (fn, arg) => {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        fn(arg);
-      };
-      const timer = setTimeout(() => {
-        try { stream.close(); } catch (_e) {}
-        finish(reject, new Error('command timed out'));
-      }, EXEC_TIMEOUT_MS);
+      if (err) {
+        finish(reject, err);
+        return;
+      }
+      stream = s;
       stream.on('data', (c) => {
         if (stdout.length < EXEC_MAX_STDOUT) stdout += c.toString('utf8');
       });
@@ -508,11 +543,15 @@ function firstLine(section) {
   return section && section.length ? section[0].trim() : '';
 }
 
+// Reserved keys that could alter object/prototype behavior if a hostile
+// relay put them in its output; never copy them into a parsed object.
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 function parseMeminfo(lines) {
-  const kb = {};
+  const kb = Object.create(null);
   for (const line of lines || []) {
     const m = line.match(/^(\w+):\s+(\d+)/);
-    if (m) kb[m[1]] = parseInt(m[2], 10) * 1024;
+    if (m && !UNSAFE_KEYS.has(m[1])) kb[m[1]] = parseInt(m[2], 10) * 1024;
   }
   const total = kb.MemTotal ?? null;
   const available = kb.MemAvailable ?? null;
@@ -684,21 +723,26 @@ const SPECS_SCRIPT = [
 ].join('; ');
 
 function parseKeyValues(lines, sep) {
-  const out = {};
+  const out = Object.create(null);
   for (const line of lines || []) {
     const i = line.indexOf(sep);
     if (i === -1) continue;
-    out[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+    const key = line.slice(0, i).trim();
+    if (UNSAFE_KEYS.has(key)) continue;
+    out[key] = line.slice(i + 1).trim();
   }
   return out;
 }
 
 // lsblk -P prints KEY="value" pairs, one device per line
 function parsePairsLine(line) {
-  const obj = {};
+  const obj = Object.create(null);
   const re = /(\w+)="((?:[^"\\]|\\.)*)"/g;
   let m;
-  while ((m = re.exec(line)) !== null) obj[m[1]] = m[2].replace(/\\(.)/g, '$1');
+  while ((m = re.exec(line)) !== null) {
+    if (UNSAFE_KEYS.has(m[1])) continue;
+    obj[m[1]] = m[2].replace(/\\(.)/g, '$1');
+  }
   return obj;
 }
 
@@ -867,6 +911,7 @@ function openToolWindow(name, file, { width, height }) {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
   win.loadFile(path.join(__dirname, 'renderer', file));
